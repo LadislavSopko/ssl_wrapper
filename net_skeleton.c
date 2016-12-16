@@ -39,7 +39,8 @@
  * We start with everything and disable some outdated ciphers and digests.
  */
 static const char ns_s_cipher_list[] =
-    "ALL:!EXPORT:!LOW:!MEDIUM:!ADH:!MD5";
+//"ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-AES256-GCM-SHA384:DHE-RSA-AES128-GCM-SHA256:DHE-DSS-AES128-GCM-SHA256:kEDH+AESGCM:ECDHE-RSA-AES128-SHA256:ECDHE-ECDSA-AES128-SHA256:ECDHE-RSA-AES128-SHA:ECDHE-ECDSA-AES128-SHA:ECDHE-RSA-AES256-SHA384:ECDHE-ECDSA-AES256-SHA384:ECDHE-RSA-AES256-SHA:ECDHE-ECDSA-AES256-SHA:DHE-RSA-AES128-SHA256:DHE-RSA-AES128-SHA:DHE-DSS-AES128-SHA256:DHE-RSA-AES256-SHA256:DHE-DSS-AES256-SHA:DHE-RSA-AES256-SHA:AES128-GCM-SHA256:AES256-GCM-SHA384:AES128-SHA256:AES256-SHA256:AES128-SHA:AES256-SHA:AES:CAMELLIA:DES-CBC3-SHA:!aNULL:!eNULL:!EXPORT:!DES:!RC4:!MD5:!PSK:!aECDH:!EDH-DSS-DES-CBC3-SHA:!EDH-RSA-DES-CBC3-SHA:!KRB5-DES-CBC3-SHA";
+"EECDH+AESGCM:EDH+AESGCM:ECDHE-RSA-AES128-GCM-SHA256:AES256+EECDH:DHE-RSA-AES128-GCM-SHA256:AES256+EDH:ECDHE-RSA-AES256-GCM-SHA384:DHE-RSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-SHA384:ECDHE-RSA-AES128-SHA256:ECDHE-RSA-AES256-SHA:ECDHE-RSA-AES128-SHA:DHE-RSA-AES256-SHA256:DHE-RSA-AES128-SHA256:DHE-RSA-AES256-SHA:DHE-RSA-AES128-SHA:ECDHE-RSA-DES-CBC3-SHA:EDH-RSA-DES-CBC3-SHA:AES256-GCM-SHA384:AES128-GCM-SHA256:AES256-SHA256:AES128-SHA256:AES256-SHA:AES128-SHA:DES-CBC3-SHA:HIGH:!aNULL:!eNULL:!EXPORT:!DES:!MD5:!PSK:!RC4";
 /*
  * Default DH params for PFS cipher negotiation. This is a 2048-bit group.
  * Will be used if none are provided by the user in the certificate file.
@@ -366,7 +367,10 @@ static int ns_parse_address(const char *str, union socket_address *sa,
   *use_ssl = 0;
   cert[0] = ca[0] = '\0';
 
-  if (memcmp(str, "ssl://", 6) == 0) {
+  if (memcmp(str, "wss://", 6) == 0) {
+	  str += 6;
+	  *use_ssl = 1;
+  } else if (memcmp(str, "ssl://", 6) == 0) {
     str += 6;
     *use_ssl = 1;
   } else if (memcmp(str, "udp://", 6) == 0) {
@@ -374,6 +378,9 @@ static int ns_parse_address(const char *str, union socket_address *sa,
     *proto = SOCK_DGRAM;
   } else if (memcmp(str, "tcp://", 6) == 0) {
     str += 6;
+  }
+  else if (memcmp(str, "ws://", 5) == 0) {
+	  str += 5;
   }
 
   if (sscanf(str, "%u.%u.%u.%u:%u%n", &a, &b, &c, &d, &port, &len) == 5) {
@@ -456,15 +463,19 @@ static int ns_use_cert(SSL_CTX *ctx, const char *pem_file) {
     return -1;
   } else if (pem_file == NULL || pem_file[0] == '\0') {
     return 0;
-  } else if (SSL_CTX_use_certificate_file(ctx, pem_file, 1) == 0 ||
-             SSL_CTX_use_PrivateKey_file(ctx, pem_file, 1) == 0) {
-    return -2;
   } else {
+	  int ret = SSL_CTX_use_certificate_file(ctx, "E:\\tmp\\CMAKE_BUILDS\\ssl_wrapper\\Debug\\cert.pem", 1); //pem_file, 1);
+	  int ret1 = SSL_CTX_use_PrivateKey_file(ctx, "E:\\tmp\\CMAKE_BUILDS\\ssl_wrapper\\Debug\\key.pem", 1); //pem_file, 1);
+
+	  if (ret == 0 || ret1 == 0) {
+		  return -2;
+	  }
+  
     BIO *bio = NULL;
     DH *dh = NULL;
 
     /* Try to read DH parameters from the cert/key file. */
-    bio = BIO_new_file(pem_file, "r");
+	bio = BIO_new_file("E:\\tmp\\CMAKE_BUILDS\\ssl_wrapper\\Debug\\dhparams.pem", "r"); // pem_file, "r");
     if (bio != NULL) {
       dh = PEM_read_bio_DHparams(bio, NULL, NULL, NULL);
       BIO_free(bio);
@@ -485,7 +496,7 @@ static int ns_use_cert(SSL_CTX *ctx, const char *pem_file) {
     }
 
     SSL_CTX_set_mode(ctx, SSL_MODE_ACCEPT_MOVING_WRITE_BUFFER);
-    SSL_CTX_use_certificate_chain_file(ctx, pem_file);
+	SSL_CTX_use_certificate_chain_file(ctx, "E:\\tmp\\CMAKE_BUILDS\\ssl_wrapper\\Debug\\cert.pem");//pem_file);
     return 0;
   }
 }
@@ -608,6 +619,7 @@ int ns_hexdump(const void *buf, int len, char *dst, int dst_len) {
   char ascii[17] = "";
   int i, idx, n = 0;
 
+
   for (i = 0; i < len; i++) {
     idx = i % 16;
     if (idx == 0) {
@@ -637,6 +649,7 @@ static int ns_ssl_err(struct ns_connection *conn, int res) {
 static void ns_read_from_socket(struct ns_connection *conn) {
   char buf[2048];
   int n = 0;
+  int safeCnt = 10;
 
   if (conn->flags & NSF_CONNECTING) {
     int ok = 1, ret;
@@ -672,13 +685,32 @@ static void ns_read_from_socket(struct ns_connection *conn) {
     if (conn->flags & NSF_SSL_HANDSHAKE_DONE) {
       // SSL library may have more bytes ready to read then we ask to read.
       // Therefore, read in a loop until we read everything. Without the loop,
-      // we skip to the next select() cycle which can just timeout.
-      while ((n = SSL_read(conn->ssl, buf, sizeof(buf))) > 0) {
-        DBG(("%p %d <- %d bytes (SSL)", conn, conn->flags, n));
-        iobuf_append(&conn->recv_iobuf, buf, n);
-        ns_call(conn, NS_RECV, &n);
-      }
-      ns_ssl_err(conn, n);
+      // we skip to the next select() cycle which can just timeout.	 
+	  while (safeCnt-- > 0) {
+		    n = SSL_read(conn->ssl, buf, sizeof(buf));
+		   //che if there is forced reread
+			if (n < 0){
+				if (SSL_ERROR_WANT_READ == ns_ssl_err(conn, n)) {
+					continue;
+				}
+				else {
+					break; //other error
+				}
+			}else if (n == 0) {
+				ns_ssl_err(conn, n);
+				break;
+			}
+			// no error
+			DBG(("%p %d <- %d bytes (SSL)", conn, conn->flags, n));
+			iobuf_append(&conn->recv_iobuf, buf, n);
+			ns_call(conn, NS_RECV, &n);
+			//check next data
+			if (!SSL_pending(conn->ssl)) break;
+			safeCnt = 10; //reset  counter
+	  }
+		
+		  
+	 	
     } else {
       int res = SSL_accept(conn->ssl);
       int ssl_err = ns_ssl_err(conn, res);
@@ -853,9 +885,9 @@ int ns_mgr_poll(struct ns_mgr *mgr, int milli) {
   for (conn = mgr->active_connections; conn != NULL; conn = tmp_conn) {
     tmp_conn = conn->next;
     num_active_connections++;
-    if ((conn->flags & NSF_CLOSE_IMMEDIATELY) ||
-        (conn->send_iobuf.len == 0 &&
-          (conn->flags & NSF_FINISHED_SENDING_DATA))) {
+    if ((conn->flags & NSF_CLOSE_IMMEDIATELY)
+		||(conn->send_iobuf.len == 0 && (conn->flags & NSF_FINISHED_SENDING_DATA))
+	){
       ns_close_conn(conn);
     }
   }
@@ -953,6 +985,7 @@ void ns_mgr_init(struct ns_mgr *s, void *user_data, ns_callback_t cb) {
   s->ctl[0] = s->ctl[1] = INVALID_SOCKET;
   s->user_data = user_data;
   s->callback = cb;
+  s->hexdump_file = "c:\\tmp\\ssl.txt";
 
 #ifdef _WIN32
   { WSADATA data; WSAStartup(MAKEWORD(2, 2), &data); }

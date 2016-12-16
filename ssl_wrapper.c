@@ -22,21 +22,25 @@
 static void ev_handler(struct ns_connection *nc, enum ns_event ev, void *p) {
   const char *target_addr = (const char *) nc->mgr->user_data;
   struct ns_connection *pc = (struct ns_connection *) nc->connection_data;
+  struct ns_connection *ppc;
   struct iobuf *io = &nc->recv_iobuf;
 
   (void) p;
   switch (ev) {
     case NS_ACCEPT:
       // Create a connection to the target, and interlink both connections
-      nc->connection_data = ns_connect(nc->mgr, target_addr, nc);
+	  ppc = (struct ns_connection *)ns_connect(nc->mgr, target_addr, nc);
+	  nc->connection_data = ppc;
       if (nc->connection_data == NULL) {
         nc->flags |= NSF_CLOSE_IMMEDIATELY;
       }
+	  printf("Connected socket: %d -> %d\n", nc->sock, (((struct ns_connection *)nc->connection_data)->sock));
       break;
 
     case NS_CLOSE:
       // If either connection closes, unlink them and schedule closing
       if (pc != NULL) {
+		printf("Unlink socket: %d -> %d\n", nc->sock, (((struct ns_connection *)nc->connection_data)->sock));
         pc->flags |= NSF_FINISHED_SENDING_DATA;
         pc->connection_data = NULL;
       }
