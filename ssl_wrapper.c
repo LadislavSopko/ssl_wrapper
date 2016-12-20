@@ -69,6 +69,11 @@ void *ssl_wrapper_init(const char *local_addr, const char *target_addr,
     *err_msg = "malloc failed";
   } else {
     ns_mgr_init(mgr, (void *) target_addr, ev_handler);
+
+#ifdef NS_ENABLE_DEBUG
+	// logging
+	mgr->hexdump_file = "c:\\tmp\\ssl.txt";
+#endif
     if (ns_bind(mgr, local_addr, NULL) == NULL) {
       *err_msg = "ns_bind() failed: bad listening_port";
       ns_mgr_free(mgr);
